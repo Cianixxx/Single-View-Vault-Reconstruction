@@ -1,0 +1,129 @@
+function [circleParams, pts_rect, pts_metric, scaleFactor] = fit_diagonal_arc_circle(rectifiedImg, d_known)
+% FIT_DIAGONAL_ARC_CIRCLE
+% Interactively select nodal points along one diagonal arc on the
+% rectified plane and fit a circle through them. Then set a metric
+% scale using two points whose true distance is d_known.
+%
+% INPUT:
+%   rectifiedImg : rectified grayscale image of the vertical plane
+%   d_known      : known distance between two neighbouring arcs
+%                  of the same family (the project states d = 1)
+%
+% OUTPUT:
+%   circleParams : struct with fields
+%       .center_rect  : (2x1) circle center in rectified pixel coords
+%       .radius_rect  : radius in rectified pixel units
+%       .center_metric: center in metric coordinates
+%       .radius_metric: radius in metric units
+%   pts_rect    : Nx2 nodal points in rectified pixel coordinates
+%   pts_metric  : Nx2 nodal points scaled to metric units
+%   scaleFactor : world-units-per-pixel factor
+
+figure; imshow(rectifiedImg);
+title({'Select nodal points along ONE diagonal arc', ...
+       '(press ENTER when finished)'});
+
+fprintf('Click several nodal points along one diagonal arc, then press ENTER.\n');
+
+% User clicks an arbitrary number of nodal points, ENTER to end
+[x_arc, y_arc] = ginput;
+pts_rect = [x_arc(:), y_arc(:)];
+
+close;
+
+if size(pts_rect,1) < 3
+    error('At least 3 nodal points are required to fit a circle.');
+end
+
+% ---------------------------------------------------------------------
+% Fit circle in rectified image coordinates
+% ---------------------------------------------------------------------
+[center_rect, radius_rect] = fit_circle_2d(pts_rect);
+
+% ---------------------------------------------------------------------
+% Ask the user for two points whose true distance is d_known
+% ---------------------------------------------------------------------
+figure; imshow(rectifiedImg); hold on;
+plot(pts_rect(:,1), pts_rect(:,2), 'r.', 'MarkerSize', 12);
+viscircles(center_rect.', radius_rect, 'Color','g');   % transpose → 1x2
+
+title({'Select TWO nodal points whose world distance is d = 1', ...
+       '(click point 1 and point 2)'});
+
+fprintf('\nSelect TWO nodal points whose real distance is d = %.3f.\n', d_known);
+fprintf('They should correspond to neighbouring arcs of the same family.\n');
+
+[x_scale, y_scale] = ginput(2);
+scale_pts = [x_scale(:), y_scale(:)];
+
+plot(scale_pts(:,1), scale_pts(:,2), 'bo', 'MarkerSize', 8, 'LineWidth', 2);
+hold off;
+
+% Pixel distance between these two points in the rectified plane
+dist_pix = norm(scale_pts(1,:) - scale_pts(2,:));
+
+% World-units per pixel
+scaleFactor = d_known / dist_pix;
+
+% ---------------------------------------------------------------------
+% Convert all nodal points and circle parameters to metric units
+% ---------------------------------------------------------------------
+pts_metric   = pts_rect * scaleFactor;
+center_metric = center_rect * scaleFactor;
+radius_metric = radius_rect * scaleFactor;
+
+% ---------------------------------------------------------------------
+% Save a figure with the fitted circle and nodal points (rectified plane)
+% ---------------------------------------------------------------------
+figure; imshow(rectifiedImg); hold on;
+plot(pts_rect(:,1), pts_rect(:,2), 'r.', 'MarkerSize', 12);
+theta = linspace(0, 2*pi, 400);
+cx = center_rect(1) + radius_rect*cos(theta);
+cy = center_rect(2) + radius_rect*sin(theta);
+plot(cx, cy, 'g-', 'LineWidth', 2);
+
+title({'Diagonal arc: nodal points and fitted circle', ...
+       sprintf('radius_{rect} = %.3f  (pixels)', radius_rect)});
+hold off;
+
+frame = getframe(gca);
+imwrite(frame.cdata, 'output_rectified_arc_circle.png');
+
+% ---------------------------------------------------------------------
+% Print some metric coordinates to the console
+% ---------------------------------------------------------------------
+fprintf('\nFirst nodal points in metric coordinates (x, y):\n');
+maxPrint = min(5, size(pts_metric,1));
+for i = 1:maxPrint
+    fprintf('  P%d_metric = (%.4f , %.4f)\n', i, ...
+        pts_metric(i,1), pts_metric(i,2));
+end
+
+% ---------------------------------------------------------------------
+% Save all metric nodal coordinates and circle parameters to text files
+% ---------------------------------------------------------------------
+% Nodal points (metric units)
+fid = fopen('metric_nodal_points.txt','w');
+fprintf(fid, '# Nodal points in metric coordinates (x y)\n');
+for i = 1:size(pts_metric,1)
+    fprintf(fid, '%.6f %.6f\n', pts_metric(i,1), pts_metric(i,2));
+end
+fclose(fid);
+
+% Circle parameters (metric units)
+fid2 = fopen('metric_circle_params.txt','w');
+fprintf(fid2, '# Circle center (metric) and radius (metric)\n');
+fprintf(fid2, 'center_x %.6f\n', center_metric(1));
+fprintf(fid2, 'center_y %.6f\n', center_metric(2));
+fprintf(fid2, 'radius   %.6f\n', radius_metric);
+fclose(fid2);
+
+% ---------------------------------------------------------------------
+% Pack outputs
+% ---------------------------------------------------------------------
+circleParams.center_rect   = center_rect(:);
+circleParams.radius_rect   = radius_rect;
+circleParams.center_metric = center_metric(:);
+circleParams.radius_metric = radius_metric;
+
+end

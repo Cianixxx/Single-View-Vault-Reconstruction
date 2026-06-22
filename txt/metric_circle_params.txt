@@ -1,0 +1,4 @@
+# Circle center (metric) and radius (metric)
+center_x 3.143909
+center_y 6.050309
+radius   2.366680
